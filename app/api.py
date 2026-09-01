@@ -5,7 +5,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse, Response, StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app import storage
 from app.db import SessionLocal
@@ -16,7 +16,7 @@ from app.vlm.client import get_client as get_vlm_client
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")
 
-RUNNING = {"probing", "sampling", "analyzing", "aggregating"}
+RUNNING = {"queued", "probing", "sampling", "analyzing", "aggregating"}
 
 
 def _get_video(session, video_id: str) -> Video:
@@ -58,22 +58,28 @@ async def upload_photo(file: UploadFile = File(...), project_name: str = Form(""
 @router.post("/videos/{video_id}/analyze", status_code=202)
 async def analyze(video_id: str, background: BackgroundTasks):
     with SessionLocal() as session:
-        video = _get_video(session, video_id)
-        if video.status in RUNNING:
+        claimed = session.execute(
+            update(Video)
+            .where(Video.id == video_id, Video.status.not_in(RUNNING))
+            .values(status="queued")
+        )
+        if claimed.rowcount != 1:
+            _get_video(session, video_id)
             raise HTTPException(409, "already processing")
+        session.commit()
     background.add_task(run_pipeline, video_id, SessionLocal, get_vlm_client())
     return {"video_id": video_id, "status": "queued"}
 
 
 @router.get("/videos/{video_id}/status")
 async def status_stream(video_id: str):
+    with SessionLocal() as session:
+        _get_video(session, video_id)
+
     async def gen():
         while True:
             with SessionLocal() as session:
                 video = session.get(Video, video_id)
-                if video is None:
-                    yield f"data: {json.dumps({'status': 'not_found'})}\n\n"
-                    return
                 payload = {
                     "status": video.status,
                     "progress_pct": video.progress_pct,

@@ -64,6 +64,23 @@ def test_report_before_done_returns_202(client, tmp_path):
     assert client.get("/api/videos/vid_missing/report").status_code == 404
 
 
+def test_analyze_queues_video_before_scheduling_and_rejects_repeat(client, monkeypatch):
+    import app.api as api
+
+    monkeypatch.setattr(api, "run_pipeline", lambda *args: None)
+    vid = client.post(
+        "/api/videos/upload",
+        files={"file": ("queued.mp4", io.BytesIO(b"x"), "video/mp4")},
+    ).json()["video_id"]
+
+    first = client.post(f"/api/videos/{vid}/analyze")
+    assert first.status_code == 202
+    assert first.json() == {"video_id": vid, "status": "queued"}
+    assert client.get("/api/videos").json()[0]["status"] == "queued"
+
+    assert client.post(f"/api/videos/{vid}/analyze").status_code == 409
+
+
 def test_upload_sanitizes_filename(client):
     r = client.post(
         "/api/videos/upload",
@@ -86,3 +103,11 @@ def test_sse_status_stream_ends_on_done(client, tmp_path):
             json.loads(line[6:]) for line in r.iter_lines() if line.startswith("data: ")
         ]
     assert events[-1]["status"] == "done"
+
+
+def test_sse_status_stream_returns_404_for_missing_video(client):
+    response = client.get("/api/videos/vid_missing/status")
+
+    assert response.status_code == 404
+    assert response.headers["content-type"] == "application/json"
+    assert response.json() == {"detail": "video not found"}
