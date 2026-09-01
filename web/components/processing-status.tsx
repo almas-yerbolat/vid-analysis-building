@@ -31,9 +31,10 @@ export function ProcessingStatus({ videoId }: { videoId: string }) {
         const event = JSON.parse(data) as StatusEvent
         setStatus(event)
         setError('')
-        if (event.status === 'done') {
+        if (event.status === 'done' || event.status === 'failed') {
+          closed = true
           source.close()
-          router.push(`/report/${videoId}`)
+          if (event.status === 'done') router.push(`/report/${videoId}`)
         }
       } catch {
         setError('Не удалось прочитать статус проверки. Повторите подключение.')

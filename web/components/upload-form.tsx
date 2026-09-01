@@ -10,6 +10,7 @@ export function UploadForm() {
   const [file, setFile] = useState<File | null>(null)
   const [projectName, setProjectName] = useState('')
   const [isPhoto, setIsPhoto] = useState(false)
+  const [uploadedVideoId, setUploadedVideoId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
@@ -22,12 +23,16 @@ export function UploadForm() {
 
     setError('')
     setSubmitting(true)
+    let videoId = uploadedVideoId
     try {
-      const videoId = await api.upload(file, projectName, isPhoto)
+      if (!videoId) {
+        videoId = await api.upload(file, projectName, isPhoto)
+        setUploadedVideoId(videoId)
+      }
       await api.startAnalysis(videoId)
       router.push(`/processing/${videoId}`)
     } catch {
-      setError('Не удалось загрузить файл. Повторите попытку.')
+      setError(videoId ? 'Не удалось запустить анализ. Повторите попытку.' : 'Не удалось загрузить файл. Повторите попытку.')
       setSubmitting(false)
     }
   }
@@ -36,18 +41,18 @@ export function UploadForm() {
     <form className="upload-form" onSubmit={submit}>
       <fieldset className="media-selector">
         <legend>Материал</legend>
-        <label><input checked={!isPhoto} name="media-type" onChange={() => setIsPhoto(false)} type="radio" /> Видео</label>
-        <label><input checked={isPhoto} name="media-type" onChange={() => setIsPhoto(true)} type="radio" /> Фото</label>
+        <label><input checked={!isPhoto} name="media-type" onChange={() => { setIsPhoto(false); setUploadedVideoId(null) }} type="radio" /> Видео</label>
+        <label><input checked={isPhoto} name="media-type" onChange={() => { setIsPhoto(true); setUploadedVideoId(null) }} type="radio" /> Фото</label>
       </fieldset>
 
       <label className="form-field" htmlFor="project-name">
         <span>Проект <small>необязательно</small></span>
-        <input id="project-name" name="project-name" onChange={(event) => setProjectName(event.target.value)} placeholder="Например, ЖК Северный" value={projectName} />
+        <input id="project-name" name="project-name" onChange={(event) => { setProjectName(event.target.value); setUploadedVideoId(null) }} placeholder="Например, ЖК Северный" value={projectName} />
       </label>
 
       <label className="file-field" htmlFor="media-file">
         <span>Файл</span>
-        <input accept={isPhoto ? 'image/*' : 'video/*'} aria-label="Файл" id="media-file" name="file" onChange={(event) => setFile(event.target.files?.[0] ?? null)} type="file" />
+        <input accept={isPhoto ? 'image/*' : 'video/*'} aria-label="Файл" id="media-file" name="file" onChange={(event) => { setFile(event.target.files?.[0] ?? null); setUploadedVideoId(null) }} type="file" />
         <strong>{file?.name ?? 'Выберите файл с устройства'}</strong>
       </label>
 

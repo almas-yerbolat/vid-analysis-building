@@ -45,4 +45,20 @@ describe('UploadForm', () => {
     expect((await screen.findByRole('alert')).textContent).toBe('Не удалось загрузить файл. Повторите попытку.')
     expect((screen.getByLabelText('Файл') as HTMLInputElement).files?.[0]?.name).toBe('site.mp4')
   })
+
+  it('retries analysis without uploading the file again', async () => {
+    mockUpload.mockResolvedValue('vid_1')
+    mockStartAnalysis.mockRejectedValueOnce(new Error('setup failed')).mockResolvedValueOnce({ video_id: 'vid_1', status: 'queued' })
+    const user = userEvent.setup()
+
+    render(<UploadForm />)
+    await user.upload(screen.getByLabelText('Файл'), new File(['x'], 'site.mp4', { type: 'video/mp4' }))
+    await user.click(screen.getByRole('button', { name: 'Загрузить и анализировать' }))
+
+    expect((await screen.findByRole('alert')).textContent).toBe('Не удалось запустить анализ. Повторите попытку.')
+    await user.click(screen.getByRole('button', { name: 'Загрузить и анализировать' }))
+
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/processing/vid_1'))
+    expect(mockUpload).toHaveBeenCalledTimes(1)
+  })
 })

@@ -51,4 +51,18 @@ describe('ProcessingStatus', () => {
     expect((await screen.findByRole('alert')).textContent).toBe('Потеряна связь со статусом. Повторите попытку.')
     expect(screen.getByRole('button', { name: 'Повторить подключение' })).toBeTruthy()
   })
+
+  it('closes on a failed terminal status without offering a connection retry', async () => {
+    vi.stubGlobal('EventSource', MockEventSource)
+    render(<ProcessingStatus videoId="vid_1" />)
+
+    const source = sources[0]
+    source?.onmessage?.({ data: JSON.stringify({ status: 'failed', progress_pct: 60, progress_note: 'Остановка', error: 'Сервер не смог завершить анализ' }) } as MessageEvent<string>)
+    source?.onerror?.()
+
+    expect(await screen.findByText('Сервер не смог завершить анализ')).toBeTruthy()
+    expect(source?.close).toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: 'Повторить подключение' })).toBeNull()
+    expect(mockPush).not.toHaveBeenCalled()
+  })
 })
