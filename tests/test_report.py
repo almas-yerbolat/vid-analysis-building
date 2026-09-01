@@ -41,6 +41,9 @@ def test_build_report_shape_and_persistence():
     assert report["equipment"][0]["evidence_frame"] == frames[1].id
     assert report["meta"]["frames_analyzed"] == 3
     assert report["meta"]["coverage_pct"] == 100
+    # spec §4.4.3 / §4.7: the report footer must disclose what this analysis cannot do.
+    assert len(report["limitations"]) >= 4
+    assert all(isinstance(item, str) and item for item in report["limitations"])
 
     s.commit()
     assert s.execute(select(Finding)).scalars().one().severity == "high"

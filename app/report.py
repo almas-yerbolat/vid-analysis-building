@@ -4,6 +4,23 @@ from app.aggregate import MergedFinding
 from app.models import Finding, FindingFrame, Frame, Report, Video
 
 
+# Static disclosure for the report footer (spec §4.4.3 and §4.7 both require one).
+# Plain data on purpose: the reader must always see these, so they must not depend on
+# what a model chose to write in the summary.
+LIMITATIONS_RU = [
+    "СИЗ (каски, жилеты) определяются ненадёжно, если человек занимает в кадре менее "
+    "~40 px по высоте: при съёмке с большой высоты часть нарушений ТБ может быть не "
+    "выявлена.",
+    "Количество техники — максимум одновременно видимых единиц в одном кадре, то есть "
+    "честная нижняя оценка. Отслеживание объектов между кадрами не выполняется, поэтому "
+    "уникальные единицы техники не подсчитываются.",
+    "Анализ не детерминирован: повторный прогон того же видео может дать другой набор "
+    "нарушений и другие количества техники.",
+    "Соблюдение мойки колёс достоверно проверяется на КПП, а не с воздуха. Отчёт "
+    "фиксирует только визуально грязную технику и наличие/отсутствие мойки в кадре.",
+]
+
+
 def _frame_by_ts(frames: list[Frame]) -> dict[int, Frame]:
     return {f.ts_ms: f for f in frames}
 
@@ -78,6 +95,7 @@ def build_report(session, video: Video, frames: list[Frame], batches_failed: int
         "activity_timeline": timeline,
         "findings": findings_json,
         "stats": stats,
+        "limitations": list(LIMITATIONS_RU),
     }
     session.add(Report(video_id=video.id, report_json=report, summary_ru=summary_ru))
     session.flush()
