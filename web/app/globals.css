@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --paper: #E9E6DE;
+  --blueprint: #183247;
+  --amber: #E07A2D;
+  --concrete: #7E8C91;
+  --chalk: #FCFBF7;
+  --alert: #B93F36;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-width: 320px;
+  color: var(--blueprint);
+  background-color: var(--paper);
+  background-image:
+    linear-gradient(rgb(24 50 71 / 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(24 50 71 / 0.055) 1px, transparent 1px);
+  background-size: 24px 24px;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+a { color: inherit; }
+
+:focus-visible {
+  outline: 3px solid var(--amber);
+  outline-offset: 3px;
+}
+
+.console-shell {
+  width: min(100% - 32px, 1120px);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 24px 0 64px;
+}
+
+.site-header {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 20px;
+  border-bottom: 2px solid var(--blueprint);
+  padding-bottom: 14px;
+}
+
+.wordmark, .eyebrow, .header-label, .header-status {
+  font-family: "Arial Narrow", "Roboto Condensed", Arial, sans-serif;
+  font-stretch: condensed;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.wordmark { font-weight: 800; font-size: 1.25rem; text-decoration: none; }
+.header-label { color: var(--concrete); font-size: 0.75rem; }
+.header-status { color: var(--blueprint); font-size: 0.75rem; }
+.header-status::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 7px; border-radius: 50%; background: var(--amber); }
+
+.welcome-panel {
+  max-width: 640px;
+  margin: clamp(72px, 14vh, 160px) 0 0 clamp(0px, 8vw, 112px);
+  border-left: 8px solid var(--amber);
+  background: var(--chalk);
+  box-shadow: 10px 10px 0 rgb(24 50 71 / 0.1);
+  padding: clamp(28px, 6vw, 56px);
+}
+
+.eyebrow { margin: 0 0 16px; color: var(--amber); font-size: 0.75rem; font-weight: 800; }
+h1 { max-width: 11ch; margin: 0; font-family: "Arial Narrow", "Roboto Condensed", Arial, sans-serif; font-size: clamp(2.5rem, 7vw, 5.5rem); line-height: 0.88; letter-spacing: -0.055em; text-transform: uppercase; }
+.welcome-panel > p:not(.eyebrow) { max-width: 48ch; margin: 28px 0 0; line-height: 1.55; }
+.welcome-panel .panel-note { color: var(--concrete); font-size: 0.875rem; }
+
+@media (max-width: 620px) {
+  .console-shell { width: min(100% - 24px, 1120px); padding-top: 16px; }
+  .site-header { grid-template-columns: 1fr auto; gap: 8px; }
+  .header-label { grid-column: 1 / -1; grid-row: 2; }
+  .welcome-panel { margin-left: 0; border-left-width: 5px; }
+}
