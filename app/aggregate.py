@@ -97,8 +97,12 @@ def equipment_inventory(analyses: list[FrameAnalysis]) -> list[dict]:
             for t, (c, ts) in sorted(best.items(), key=lambda kv: -kv[1][0])]
 
 
-def activity_timeline(analyses: list[FrameAnalysis]) -> list[dict]:
-    """Contiguous segments: each ends where the next begins (spec §4.5 shape)."""
+def activity_timeline(analyses: list[FrameAnalysis], duration_s: float) -> list[dict]:
+    """Contiguous segments: each ends where the next begins (spec §4.5 shape).
+
+    Nothing after the last frame closes the final segment, so it needs the video
+    duration — otherwise from_ms == to_ms and a timeline bar renders zero-width.
+    """
     ordered = sorted(analyses, key=lambda a: a.ts_ms)
     segments: list[dict] = []
     for a in ordered:
@@ -108,6 +112,8 @@ def activity_timeline(analyses: list[FrameAnalysis]) -> list[dict]:
         if segments:
             segments[-1]["to_ms"] = a.ts_ms
         segments.append({"from_ms": a.ts_ms, "to_ms": a.ts_ms, "activity": a.activity})
+    if segments:
+        segments[-1]["to_ms"] = max(segments[-1]["to_ms"], round(duration_s * 1000))
     return segments
 
 
@@ -115,7 +121,7 @@ def build_summary(client: VlmClient, stage: dict, equipment: list[dict],
                   timeline: list[dict], findings: list[MergedFinding],
                   note: str = "") -> str:
     prompt = SUMMARY_PROMPT_TEMPLATE.format(
-        stage=stage["primary"],
+        stage=stage["primary"] or "не определена",
         equipment="; ".join(f"{e['type']}: {e['max_count']}" for e in equipment) or "не выявлена",
         timeline="; ".join(f"{t['from_ms'] // 1000}–{t['to_ms'] // 1000}с: {t['activity']}"
                            for t in timeline) or "нет данных",

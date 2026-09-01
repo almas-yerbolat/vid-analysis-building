@@ -1,6 +1,5 @@
 from app.aggregate import (activity_timeline, build_summary, decide_stage,
                            equipment_inventory, merge_findings)
-from app.vlm.client import FakeVlmClient
 from app.vlm.schema import BatchResponse
 
 
@@ -73,12 +72,20 @@ def test_equipment_max_simultaneous():
     assert inv == [{"type": "самосвал", "max_count": 3, "evidence_ts": 5000}]
 
 
-def test_timeline_merges_identical_activity():
+def test_timeline_merges_identical_activity_and_closes_at_video_end():
     analyses = [fa(0, activity="Монтаж"), fa(5000, activity="Монтаж"),
                 fa(10000, activity="Разгрузка")]
-    tl = activity_timeline(analyses)
+    tl = activity_timeline(analyses, duration_s=15.0)
+    # last segment now runs to the end of the video instead of being zero-width.
     assert tl == [{"from_ms": 0, "to_ms": 10000, "activity": "Монтаж"},
-                  {"from_ms": 10000, "to_ms": 10000, "activity": "Разгрузка"}]
+                  {"from_ms": 10000, "to_ms": 15000, "activity": "Разгрузка"}]
+
+
+def test_timeline_never_shrinks_below_its_last_frame():
+    """A duration shorter than the last analyzed frame (rounding, bad probe) must not
+    produce an inverted segment."""
+    tl = activity_timeline([fa(0), fa(10000)], duration_s=3.0)
+    assert tl == [{"from_ms": 0, "to_ms": 10000, "activity": "Монтаж"}]
 
 
 def test_stage_secondary_reported_when_above_threshold():
@@ -105,7 +112,7 @@ def test_build_summary_includes_aggregate_data():
     client = SummaryClient()
     stage = decide_stage([fa(0)])
     equipment = equipment_inventory([fa(0, equipment=[{"type": "самосвал", "count": 1}])])
-    timeline = activity_timeline([fa(0)])
+    timeline = activity_timeline([fa(0)], duration_s=0.0)
     findings = merge_findings([fa(0, findings=[helmet()])])
     summary = build_summary(client, stage, equipment, timeline, findings)
     assert summary == "summary"
@@ -121,6 +128,7 @@ def test_build_summary_uses_empty_site_fallbacks():
     client = SummaryClient()
     assert build_summary(client, stage, [], [], []) == "summary"
     prompt = client.prompts[0]
+    assert "Стадия: не определена" in prompt  # not the literal "None"
     assert "не выявлена" in prompt
     assert "нет данных" in prompt
     assert "не выявлены" in prompt

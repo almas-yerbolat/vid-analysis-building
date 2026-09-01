@@ -1,4 +1,5 @@
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 from app import storage
@@ -52,7 +53,11 @@ def _run_batch(video: Video, batch: list[Frame], client: VlmClient) -> VlmResult
         # they were flaky API calls; narrow to the SDK's transient-error types if that bites.
         return client.analyze_batch(images, ts, lq, video.project_name)
     except Exception:
-        logger.warning("batch failed, retrying once", exc_info=True)
+        # The likeliest real failure is a rate limit, so an immediate retry burns both
+        # attempts and turns a transient 429 into permanent coverage loss (spec §5.3).
+        logger.warning("batch failed, retrying once in %ss", settings.vlm_retry_delay_s,
+                       exc_info=True)
+        time.sleep(settings.vlm_retry_delay_s)
         return client.analyze_batch(images, ts, lq, video.project_name)
 
 

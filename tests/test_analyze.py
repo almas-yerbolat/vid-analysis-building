@@ -2,6 +2,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app import storage
+from app.config import settings
 from app.models import Analysis, Base, Frame, Video
 from app.report import build_report
 from app.vlm.analyze import analyze_frames
@@ -22,6 +23,7 @@ class FlakyClient(FakeVlmClient):
 
 def setup(tmp_path, monkeypatch, n_frames, first_ts_ms=0):
     monkeypatch.setattr(storage.settings, "media_dir", str(tmp_path))
+    monkeypatch.setattr(settings, "vlm_retry_delay_s", 0)  # real backoff is 2s
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)
     s = Session(engine)

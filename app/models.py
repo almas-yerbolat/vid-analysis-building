@@ -31,7 +31,8 @@ class Video(Base):
     fps: Mapped[float] = mapped_column(Float, default=0.0)
     width: Mapped[int] = mapped_column(Integer, default=0)
     height: Mapped[int] = mapped_column(Integer, default=0)
-    # status ∈ {uploaded, probing, sampling, analyzing, aggregating, done, failed}
+    # status ∈ {uploaded, queued, probing, sampling, analyzing, aggregating, done, failed}
+    # (queued is app/api.py's atomic claim marker for a run about to start)
     status: Mapped[str] = mapped_column(String, default="uploaded")
     progress_pct: Mapped[int] = mapped_column(Integer, default=0)
     progress_note: Mapped[str] = mapped_column(String, default="")

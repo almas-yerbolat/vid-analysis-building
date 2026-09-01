@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     gcp_location: str = "global"
     vertex_model: str = "gemini-3.6-flash"
     vlm_concurrency: int = 4
+    vlm_retry_delay_s: float = 2.0  # backoff before the single retry (spec §5.3)
 
     # sampling knobs (Step-1 tuning surface)
     baseline_interval_s: float = 5.0

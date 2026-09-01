@@ -16,7 +16,9 @@ def test_extracts_saves_and_dedups(static_video, tmp_path, monkeypatch):
     assert storage.path_for(f.media_key).exists()
     assert storage.path_for(f.thumb_key).exists()
     img = cv2.imread(str(storage.path_for(f.media_key)))
-    assert max(img.shape[:2]) <= 1568
+    # Exact shape, not `max(...) <= 1568`: the fixture is 320x240, so a bound alone
+    # would still pass if the no-upscale guard were removed and it grew to 1568x1176.
+    assert img.shape[:2] == (240, 320)
 
 
 def test_moving_video_keeps_multiple(moving_video, tmp_path, monkeypatch):

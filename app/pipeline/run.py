@@ -78,7 +78,7 @@ def run_pipeline(video_id: str, session_factory=SessionLocal,
             merged = merge_findings(analyses)
             stage = decide_stage(analyses)
             equipment = equipment_inventory(analyses)
-            timeline = activity_timeline(analyses)
+            timeline = activity_timeline(analyses, video.duration_s)
             coverage = coverage_pct(batches_failed, batches_total)
             note = "" if coverage >= 100 else (
                 f"Внимание: проанализировано только {coverage}% кадров — часть запросов "

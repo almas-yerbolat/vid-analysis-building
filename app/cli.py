@@ -42,19 +42,19 @@ def contact_sheet(images: list[np.ndarray], labels: list[str], cols: int = 5) ->
     return cv2.vconcat(rows)
 
 
-def _sample(video_path: str) -> tuple[list, list]:
+def _sample(video_path: str) -> tuple[list, list, float]:
     info = probe(video_path)
     motion = motion_curve(video_path)
     cuts = scene_cuts(motion)
     keyframes = schedule_keyframes(info.duration_s, motion, cuts)
     extracted = extract_frames(video_path, "cli", keyframes, motion)
-    return keyframes, extracted
+    return keyframes, extracted, info.duration_s
 
 
 def run_sample(video_path: str, out_dir: str) -> dict:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    keyframes, extracted = _sample(video_path)
+    keyframes, extracted, _ = _sample(video_path)
     images, labels = [], []
     for extracted_frame in extracted:
         source = storage.path_for(extracted_frame.media_key)
@@ -80,7 +80,7 @@ def run_sample(video_path: str, out_dir: str) -> dict:
 def run_analyze(video_path: str, out_dir: str, draw: bool) -> dict:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    _, extracted = _sample(video_path)
+    _, extracted, duration_s = _sample(video_path)
     client = get_client()
     analyses = []
     for i in range(0, len(extracted), 4):
@@ -110,7 +110,7 @@ def run_analyze(video_path: str, out_dir: str, draw: bool) -> dict:
     output = {
         "stage": decide_stage(analyses),
         "equipment": equipment_inventory(analyses),
-        "timeline": activity_timeline(analyses),
+        "timeline": activity_timeline(analyses, duration_s),
         "findings": [
             {
                 "category": merged_finding.category,

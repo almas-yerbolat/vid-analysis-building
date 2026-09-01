@@ -67,7 +67,7 @@ def test_run_analyze_draws_all_findings_at_the_same_timestamp(tmp_path, monkeypa
             }]})
             return VlmResult(parsed=parsed, raw_text="", model="test")
 
-    monkeypatch.setattr("app.cli._sample", lambda _: ([], [frame]))
+    monkeypatch.setattr("app.cli._sample", lambda _: ([], [frame], 2.0))
     monkeypatch.setattr("app.cli.get_client", Client)
 
     run_analyze("video.mp4", str(tmp_path / "out"), draw=True)

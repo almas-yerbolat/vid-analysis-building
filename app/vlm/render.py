@@ -20,7 +20,6 @@ def draw_boxes(img: np.ndarray, boxes: list[dict], severity: str) -> np.ndarray:
         cv2.rectangle(out, p0, p1, color, max(2, w // 800))
         label = box.get("label", "")
         if label:
-            # ponytail: Hershey has no Cyrillic; Pillow+TTF for user-facing renders
             cv2.putText(out, label, (p0[0], max(p0[1] - 6, 12)),
                         cv2.FONT_HERSHEY_COMPLEX, 0.5, color, 1, cv2.LINE_AA)
     return out
