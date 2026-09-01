@@ -25,13 +25,13 @@ def _set_status(session, video: Video, status: str, pct: int, note: str = "") ->
 
 def run_pipeline(video_id: str, session_factory=SessionLocal,
                  client: VlmClient | None = None) -> None:
-    client = client or get_client()
     with session_factory() as session:
         video = session.get(Video, video_id)
         if video is None:
             logger.error("video %s not found", video_id)
             return
         try:
+            client = client or get_client()
             path = str(storage.path_for(video.media_key))
             frames_extracted = 0
 
