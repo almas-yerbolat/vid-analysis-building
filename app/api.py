@@ -67,7 +67,19 @@ async def analyze(video_id: str, background: BackgroundTasks):
             _get_video(session, video_id)
             raise HTTPException(409, "already processing")
         session.commit()
-    background.add_task(run_pipeline, video_id, SessionLocal, get_vlm_client())
+    try:
+        client = get_vlm_client()
+    except Exception as exc:
+        logger.exception("VLM client setup failed for %s", video_id)
+        with SessionLocal() as session:
+            session.execute(
+                update(Video)
+                .where(Video.id == video_id, Video.status == "queued")
+                .values(status="failed", error=str(exc)[:2000])
+            )
+            session.commit()
+        raise HTTPException(500, "analysis setup failed") from exc
+    background.add_task(run_pipeline, video_id, SessionLocal, client)
     return {"video_id": video_id, "status": "queued"}
 
 

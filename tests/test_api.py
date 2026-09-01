@@ -81,6 +81,31 @@ def test_analyze_queues_video_before_scheduling_and_rejects_repeat(client, monke
     assert client.post(f"/api/videos/{vid}/analyze").status_code == 409
 
 
+def test_analyze_client_setup_failure_marks_claim_failed(client, monkeypatch):
+    import app.api as api
+
+    error = "client setup failed: " + "x" * 2000
+
+    def fail_client_setup():
+        raise RuntimeError(error)
+
+    monkeypatch.setattr(api, "get_vlm_client", fail_client_setup)
+    vid = client.post(
+        "/api/videos/upload",
+        files={"file": ("setup-failure.mp4", io.BytesIO(b"x"), "video/mp4")},
+    ).json()["video_id"]
+
+    response = TestClient(client.app, raise_server_exceptions=False).post(
+        f"/api/videos/{vid}/analyze"
+    )
+
+    assert response.status_code == 500
+    assert response.json() == {"detail": "analysis setup failed"}
+    with api.SessionLocal() as session:
+        video = session.get(api.Video, vid)
+        assert (video.status, video.error) == ("failed", error[:2000])
+
+
 def test_upload_sanitizes_filename(client):
     r = client.post(
         "/api/videos/upload",
