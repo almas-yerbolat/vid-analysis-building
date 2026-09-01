@@ -57,5 +57,5 @@ SUMMARY_PROMPT_TEMPLATE = """Ты — инженер строительного 
 Техника: {equipment}
 Активность по времени: {timeline}
 Нарушения ({n_findings} шт.): {findings}
-
+{note}
 Ответ — только текст резюме, без заголовков и JSON."""

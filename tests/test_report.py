@@ -27,10 +27,10 @@ def test_build_report_shape_and_persistence():
                   (0, "один рабочий", [])],
     )]
     stage = {"primary": "каркас", "secondary": [], "confidence": 0.9, "evidence_ts": [0]}
-    report = build_report(s, v, frames, 0, merged, stage,
+    report = build_report(s, v, frames, 0, 1, merged, stage,
                           [{"type": "башенный_кран", "max_count": 1, "evidence_ts": 5000}],
                           [{"from_ms": 0, "to_ms": 30000, "activity": "Монтаж"}],
-                          "Резюме.", frames_extracted=5)
+                          "Резюме.", frames_extracted=5, frames_analyzed=3)
 
     assert report["video_id"] == v.id
     assert report["stage"]["primary"] == "каркас"
@@ -40,6 +40,7 @@ def test_build_report_shape_and_persistence():
     assert ev[0]["full_url"].startswith("/api/frames/frm_")
     assert report["equipment"][0]["evidence_frame"] == frames[1].id
     assert report["meta"]["frames_analyzed"] == 3
+    assert report["meta"]["coverage_pct"] == 100
 
     s.commit()
     assert s.execute(select(Finding)).scalars().one().severity == "high"
@@ -71,8 +72,8 @@ def test_duplicate_nearest_frame_evidence_does_not_violate_composite_pk():
         evidence=[(10000, "первый", []), (14999, "второй", [])],
     )]
     stage = {"primary": "каркас", "secondary": [], "confidence": 0.9, "evidence_ts": []}
-    report = build_report(s, v, frames, 0, merged, stage, [], [], "Резюме.",
-                          frames_extracted=2)
+    report = build_report(s, v, frames, 0, 1, merged, stage, [], [], "Резюме.",
+                          frames_extracted=2, frames_analyzed=2)
 
     ev = report["findings"][0]["evidence"]
     assert len(ev) == 1

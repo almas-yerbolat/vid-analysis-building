@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app import storage
 from app.models import Analysis, Base, Frame, Video
+from app.report import build_report
 from app.vlm.analyze import analyze_frames
 from app.vlm.client import FakeVlmClient, VlmResult
 from app.vlm.schema import BatchResponse
@@ -147,3 +148,30 @@ def test_drifting_timestamps_snap_to_the_batch_frames(tmp_path, monkeypatch):
     s, v, frames = setup(tmp_path, monkeypatch, 4)
     result = analyze_frames(s, v, frames, DriftingClient())
     assert [r.ts_ms for r in result] == [f.ts_ms for f in frames]
+
+
+class HalfDeadClient(FakeVlmClient):
+    """Fails every attempt on the batch starting at ts 0, succeeds on the rest."""
+
+    def analyze_batch(self, images, ts_ms, low_quality, project_name) -> VlmResult:
+        if ts_ms[0] == 0:
+            raise RuntimeError("dead batch")
+        return super().analyze_batch(images, ts_ms, low_quality, project_name)
+
+
+def test_failed_batch_lowers_reported_coverage(tmp_path, monkeypatch):
+    """A skipped batch must be visible to the reader: coverage % in meta, and
+    frames_analyzed counting only frames that actually got analyzed (spec §5.3)."""
+    s, v, frames = setup(tmp_path, monkeypatch, 8)  # two batches of four
+    analyses = analyze_frames(s, v, frames, HalfDeadClient())
+    assert len(analyses) == 4
+    batches_failed = len(s.execute(
+        select(Analysis).where(Analysis.status == "failed")).scalars().all())
+    assert batches_failed == 1
+
+    stage = {"primary": "каркас", "secondary": [], "confidence": 0.9, "evidence_ts": []}
+    report = build_report(s, v, frames, batches_failed, 2, [], stage, [], [], "Резюме.",
+                          frames_extracted=8, frames_analyzed=len(analyses))
+    assert report["meta"]["coverage_pct"] == 50
+    assert report["meta"]["frames_analyzed"] == 4
+    assert report["meta"]["frames_analyzed"] != len(frames)

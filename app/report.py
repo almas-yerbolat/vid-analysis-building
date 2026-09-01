@@ -8,9 +8,18 @@ def _frame_by_ts(frames: list[Frame]) -> dict[int, Frame]:
     return {f.ts_ms: f for f in frames}
 
 
+def coverage_pct(batches_failed: int, batches_total: int) -> int:
+    """Share of analysis batches that succeeded (spec §5.3: a skipped batch means the
+    report notes coverage %)."""
+    if batches_total <= 0:
+        return 100
+    return round(100 * (batches_total - batches_failed) / batches_total)
+
+
 def build_report(session, video: Video, frames: list[Frame], batches_failed: int,
-                 merged: list[MergedFinding], stage: dict, equipment: list[dict],
-                 timeline: list[dict], summary_ru: str, frames_extracted: int) -> dict:
+                 batches_total: int, merged: list[MergedFinding], stage: dict,
+                 equipment: list[dict], timeline: list[dict], summary_ru: str,
+                 frames_extracted: int, frames_analyzed: int) -> dict:
     by_ts = _frame_by_ts(frames)
 
     def ref(ts_ms: int) -> Frame | None:
@@ -56,8 +65,9 @@ def build_report(session, video: Video, frames: list[Frame], batches_failed: int
     report = {
         "video_id": video.id,
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "meta": {"duration_s": video.duration_s, "frames_analyzed": len(frames),
-                 "frames_extracted": frames_extracted, "batches_failed": batches_failed},
+        "meta": {"duration_s": video.duration_s, "frames_analyzed": frames_analyzed,
+                 "frames_extracted": frames_extracted, "batches_failed": batches_failed,
+                 "coverage_pct": coverage_pct(batches_failed, batches_total)},
         "stage": {"primary": stage["primary"], "secondary": stage["secondary"],
                   "confidence": stage["confidence"],
                   "evidence_frames": [f.id for f in stage_frames if f]},

@@ -124,3 +124,10 @@ def test_build_summary_uses_empty_site_fallbacks():
     assert "не выявлена" in prompt
     assert "нет данных" in prompt
     assert "не выявлены" in prompt
+
+
+def test_build_summary_passes_coverage_note_to_the_model():
+    client = SummaryClient()
+    stage = decide_stage([fa(0)])
+    build_summary(client, stage, [], [], [], "Внимание: проанализировано только 50% кадров")
+    assert "проанализировано только 50% кадров" in client.prompts[0]

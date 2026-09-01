@@ -11,8 +11,8 @@ from app.pipeline.extract import extract_frames, extract_photo
 from app.pipeline.motion import motion_curve
 from app.pipeline.probe import probe
 from app.pipeline.schedule import scene_cuts, schedule_keyframes
-from app.report import build_report
-from app.vlm.analyze import analyze_frames
+from app.report import build_report, coverage_pct
+from app.vlm.analyze import BATCH_SIZE, analyze_frames
 from app.vlm.client import VlmClient, get_client
 
 logger = logging.getLogger(__name__)
@@ -62,7 +62,8 @@ def run_pipeline(video_id: str, session_factory=SessionLocal,
             session.add_all(frame_rows)
             session.flush()
 
-            _set_status(session, video, "analyzing", 40, f"Анализ 0/{-(-len(frame_rows) // 4)}")
+            batches_total = -(-len(frame_rows) // BATCH_SIZE)
+            _set_status(session, video, "analyzing", 40, f"Анализ 0/{batches_total}")
 
             def on_progress(done, total):
                 _set_status(session, video, "analyzing",
@@ -78,9 +79,16 @@ def run_pipeline(video_id: str, session_factory=SessionLocal,
             stage = decide_stage(analyses)
             equipment = equipment_inventory(analyses)
             timeline = activity_timeline(analyses)
-            summary = build_summary(client, stage, equipment, timeline, merged)
-            build_report(session, video, frame_rows, batches_failed, merged, stage,
-                         equipment, timeline, summary, frames_extracted)
+            coverage = coverage_pct(batches_failed, batches_total)
+            note = "" if coverage >= 100 else (
+                f"Внимание: проанализировано только {coverage}% кадров — часть запросов "
+                "к модели не удалась. Обязательно укажи в резюме, что охват неполный и "
+                "часть нарушений могла быть не выявлена."
+            )
+            summary = build_summary(client, stage, equipment, timeline, merged, note)
+            build_report(session, video, frame_rows, batches_failed, batches_total, merged,
+                         stage, equipment, timeline, summary, frames_extracted,
+                         frames_analyzed=len(analyses))
 
             _set_status(session, video, "done", 100, "Готово")
         except Exception as exc:

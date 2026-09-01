@@ -112,7 +112,8 @@ def activity_timeline(analyses: list[FrameAnalysis]) -> list[dict]:
 
 
 def build_summary(client: VlmClient, stage: dict, equipment: list[dict],
-                  timeline: list[dict], findings: list[MergedFinding]) -> str:
+                  timeline: list[dict], findings: list[MergedFinding],
+                  note: str = "") -> str:
     prompt = SUMMARY_PROMPT_TEMPLATE.format(
         stage=stage["primary"],
         equipment="; ".join(f"{e['type']}: {e['max_count']}" for e in equipment) or "не выявлена",
@@ -120,5 +121,6 @@ def build_summary(client: VlmClient, stage: dict, equipment: list[dict],
                            for t in timeline) or "нет данных",
         n_findings=len(findings),
         findings="; ".join(f"[{f.severity}] {f.title}" for f in findings) or "не выявлены",
+        note=note,
     )
     return client.summarize(prompt)
