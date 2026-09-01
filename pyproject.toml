@@ -5,13 +5,13 @@ description = "Add your description here"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.141.1",
+    "google-auth>=2.57.0",
     "google-genai>=2.21.0",
     "numpy>=2.5.2",
     "opencv-python-headless>=5.0.0.93",
     "psycopg[binary]>=3.3.5",
     "pydantic-settings>=2.15.0",
     "python-multipart>=0.0.32",
-    "scenedetect>=0.7.1",
     "sqlalchemy>=2.0.52",
     "uvicorn[standard]>=0.52.4",
 ]

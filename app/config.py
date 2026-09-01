@@ -8,15 +8,18 @@ class Settings(BaseSettings):
     media_dir: str = "./data"
 
     vlm_provider: str = "fake"  # fake | gemini
-    gcp_project: str = ""
-    gcp_location: str = "us-central1"
-    vertex_model: str = "gemini-2.5-flash"
+    gcp_credentials_file: str = "creds.json"
+    gcp_project: str = ""  # blank → taken from the service-account key
+    gcp_location: str = "global"
+    vertex_model: str = "gemini-3.6-flash"
     vlm_concurrency: int = 4
 
     # sampling knobs (Step-1 tuning surface)
     baseline_interval_s: float = 5.0
     dense_interval_s: float = 1.5
     t_fast_percentile: float = 75.0
+    cut_ratio: float = 3.0   # a scene cut spikes this far above the median motion score
+    cut_floor: float = 8.0   # absolute floor, so a near-static video yields no phantom cuts
     scan_fps: float = 4.0
     scan_width: int = 320
     max_frame_side: int = 1568
