@@ -74,9 +74,42 @@ h1 { max-width: 11ch; margin: 0; font-family: "Arial Narrow", "Roboto Condensed"
 .welcome-panel > p:not(.eyebrow) { max-width: 48ch; margin: 28px 0 0; line-height: 1.55; }
 .welcome-panel .panel-note { color: var(--concrete); font-size: 0.875rem; }
 
+.upload-form { display: grid; gap: 20px; margin-top: 32px; }
+.upload-form fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.media-selector { display: flex; flex-wrap: wrap; gap: 12px 18px; }
+.media-selector legend, .form-field > span, .file-field > span { display: block; margin-bottom: 8px; font-size: 0.75rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+.media-selector label { display: inline-flex; gap: 7px; align-items: center; font-size: 0.9rem; }
+.media-selector input { accent-color: var(--amber); }
+.form-field, .file-field { display: grid; gap: 0; }
+.form-field small { color: var(--concrete); font-size: 0.7rem; font-weight: 400; letter-spacing: 0; text-transform: none; }
+.form-field input { width: 100%; border: 1px solid var(--concrete); border-radius: 0; background: var(--chalk); color: var(--blueprint); font: inherit; padding: 12px; }
+.file-field { border: 1px dashed var(--concrete); padding: 14px; }
+.file-field input { width: 100%; color: var(--blueprint); font: inherit; }
+.file-field strong { margin-top: 10px; overflow: hidden; color: var(--concrete); font-size: 0.8rem; font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
+.action-button, .retry-button { width: fit-content; border: 0; border-radius: 0; background: var(--amber); color: var(--chalk); cursor: pointer; font: 800 0.8rem/1 "Arial Narrow", "Roboto Condensed", Arial, sans-serif; letter-spacing: 0.08em; padding: 14px 18px; text-transform: uppercase; }
+.action-button:disabled { cursor: wait; opacity: 0.7; }
+.form-error, .connection-error { margin: 0; border-left: 4px solid var(--alert); background: rgb(185 63 54 / 0.1); color: var(--alert); padding: 12px; font-size: 0.9rem; line-height: 1.4; }
+.connection-error { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.connection-error p { margin: 0; }
+.retry-button { background: var(--blueprint); font-size: 0.7rem; padding: 10px 12px; }
+
+.processing-panel { max-width: 680px; margin: clamp(72px, 14vh, 160px) 0 0 clamp(0px, 8vw, 112px); border-top: 8px solid var(--amber); background: var(--chalk); box-shadow: 10px 10px 0 rgb(24 50 71 / 0.1); padding: clamp(28px, 6vw, 56px); }
+.processing-panel h1 { max-width: 12ch; }
+.progress-reading { display: flex; gap: 16px; align-items: baseline; margin-top: 34px; }
+.progress-reading strong { color: var(--amber); font: 800 clamp(2.5rem, 7vw, 4.5rem)/0.8 "Arial Narrow", "Roboto Condensed", Arial, sans-serif; letter-spacing: -0.05em; }
+.progress-reading span { color: var(--concrete); line-height: 1.4; }
+progress { width: 100%; height: 8px; margin-top: 16px; appearance: none; border: 0; background: var(--paper); }
+progress::-webkit-progress-bar { background: var(--paper); }
+progress::-webkit-progress-value { background: var(--amber); }
+progress::-moz-progress-bar { background: var(--amber); }
+.processing-stages { display: grid; gap: 10px; margin: 28px 0; padding: 0; list-style: none; }
+.processing-stages li { border-left: 2px solid var(--paper); color: var(--concrete); font-size: 0.85rem; padding-left: 12px; }
+.processing-stages li.is-complete { border-color: var(--amber); color: var(--blueprint); font-weight: 700; }
+
 @media (max-width: 620px) {
   .console-shell { width: min(100% - 24px, 1120px); padding-top: 16px; }
   .site-header { grid-template-columns: 1fr auto; gap: 8px; }
   .header-label { grid-column: 1 / -1; grid-row: 2; }
   .welcome-panel { margin-left: 0; border-left-width: 5px; }
+  .processing-panel { margin-left: 0; border-top-width: 5px; }
 }

@@ -1,3 +1,5 @@
+import { UploadForm } from '@/components/upload-form'
+
 export default function Home() {
   return (
     <main className="console-shell">
@@ -11,7 +13,7 @@ export default function Home() {
         <p className="eyebrow">НОВАЯ ПРОВЕРКА</p>
         <h1 id="welcome-title">Загрузите запись с объекта</h1>
         <p>Видео или фото будут проверены на соблюдение требований безопасности и ход работ.</p>
-        <p className="panel-note">Загрузка и запуск анализа появятся на следующем этапе.</p>
+        <UploadForm />
       </section>
     </main>
   )

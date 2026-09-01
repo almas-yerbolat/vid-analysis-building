@@ -14,10 +14,13 @@
     "react-dom": "19.2.3"
   },
   "devDependencies": {
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.6",
     "@types/node": "22.15.2",
     "@types/react": "19.2.7",
     "@types/react-dom": "19.2.3",
     "autoprefixer": "10.4.21",
+    "jsdom": "^27.0.1",
     "postcss": "8.5.3",
     "tailwindcss": "3.4.17",
     "typescript": "5.8.3",
