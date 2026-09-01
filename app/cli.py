@@ -97,14 +97,16 @@ def run_analyze(video_path: str, out_dir: str, draw: bool) -> dict:
         annotated = out / "annotated"
         annotated.mkdir(exist_ok=True)
         by_ts = {extracted_frame.ts_ms: extracted_frame for extracted_frame in extracted}
+        annotated_images = {}
         for merged_finding in merged:
             for ts, _, boxes in merged_finding.evidence:
                 if boxes and ts in by_ts:
-                    img = cv2.imread(str(storage.path_for(by_ts[ts].media_key)))
-                    cv2.imwrite(
-                        str(annotated / f"{ts}.jpg"),
-                        draw_boxes(img, boxes, merged_finding.severity),
-                    )
+                    img = annotated_images.get(ts)
+                    if img is None:
+                        img = cv2.imread(str(storage.path_for(by_ts[ts].media_key)))
+                    annotated_images[ts] = draw_boxes(img, boxes, merged_finding.severity)
+        for ts, img in annotated_images.items():
+            cv2.imwrite(str(annotated / f"{ts}.jpg"), img)
     output = {
         "stage": decide_stage(analyses),
         "equipment": equipment_inventory(analyses),
