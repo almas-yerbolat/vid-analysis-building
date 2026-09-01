@@ -1,7 +1,12 @@
-from app.vlm.schema import Box
+from pydantic import BaseModel, Field
 
 MIN_AREA = 200  # 0.02% of 1000x1000 normalized frame
 MAX_DUP_IOU = 0.9
+
+
+class Box(BaseModel):
+    label: str
+    box_2d: list[int] = Field(min_length=4, max_length=4)  # [y_min, x_min, y_max, x_max] 0–1000
 
 
 def iou(a: list[int], b: list[int]) -> float:

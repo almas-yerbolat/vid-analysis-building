@@ -34,3 +34,19 @@ def test_clean_drops_mismatched_category_subtype():
     })
     cleaned = bad.clean()
     assert cleaned.frames[0].findings == []  # отсутствие_каски is not an ecology subtype
+
+
+def test_clean_validates_boxes_so_every_consumer_gets_clipped_coordinates():
+    """Box validation used to live in app.vlm.analyze, so app/cli.py — which calls
+    clean() directly — rendered unclipped, degenerate and duplicate boxes."""
+    dirty = BatchResponse.model_validate({
+        "frames": [{**SPEC_SAMPLE["frames"][0],
+                    "findings": [{**SPEC_SAMPLE["frames"][0]["findings"][0],
+                                  "boxes": [
+                                      {"label": "вне кадра", "box_2d": [-50, 900, 500, 1200]},
+                                      {"label": "дубль", "box_2d": [-40, 901, 499, 1199]},
+                                      {"label": "мелкий", "box_2d": [500, 500, 505, 510]},
+                                  ]}]}]
+    })
+    boxes = dirty.clean().frames[0].findings[0].boxes
+    assert [b.box_2d for b in boxes] == [[0, 900, 500, 1000]]

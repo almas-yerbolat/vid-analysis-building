@@ -2,6 +2,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.vlm.boxes import Box, validate_boxes
+
 STAGES = ["котлован", "фундамент", "каркас", "кровля", "фасад", "благоустройство"]
 
 SUBTYPES_BY_CATEGORY: dict[str, set[str]] = {
@@ -28,11 +30,6 @@ Subtype = Literal[
     "открытая_шахта_лифта", "нарушение_установки_лесов",
     "свалка_мусора", "грязная_техника_выезд", "нет_мойки_колес",
 ]
-
-
-class Box(BaseModel):
-    label: str
-    box_2d: list[int] = Field(min_length=4, max_length=4)  # [y_min, x_min, y_max, x_max] 0–1000
 
 
 class VlmFinding(BaseModel):
@@ -62,9 +59,14 @@ class BatchResponse(BaseModel):
     frames: list[FrameAnalysis]
 
     def clean(self) -> "BatchResponse":
-        """Drop findings whose subtype doesn't belong to their category."""
+        """Drop findings whose subtype doesn't belong to their category, then clip,
+        de-duplicate and drop degenerate boxes. Box validation lives here rather than
+        in a caller so every consumer of a parsed response (pipeline and CLI alike)
+        gets validated boxes by construction."""
         for frame in self.frames:
             frame.findings = [
                 f for f in frame.findings if f.subtype in SUBTYPES_BY_CATEGORY[f.category]
             ]
+            for finding in frame.findings:
+                finding.boxes = validate_boxes(finding.boxes)
         return self

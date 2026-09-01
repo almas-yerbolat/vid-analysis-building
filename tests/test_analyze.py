@@ -19,7 +19,7 @@ class FlakyClient(FakeVlmClient):
         return super().analyze_batch(*a, **k)
 
 
-def setup(tmp_path, monkeypatch, n_frames):
+def setup(tmp_path, monkeypatch, n_frames, first_ts_ms=0):
     monkeypatch.setattr(storage.settings, "media_dir", str(tmp_path))
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)
@@ -28,8 +28,9 @@ def setup(tmp_path, monkeypatch, n_frames):
     s.add(v); s.flush()
     frames = []
     for i in range(n_frames):
-        key = storage.save_bytes(f"frames/{v.id}/{i * 5000}.jpg", b"fakejpeg")
-        f = Frame(video_id=v.id, ts_ms=i * 5000, media_key=key, thumb_key=key,
+        ts = first_ts_ms + i * 5000
+        key = storage.save_bytes(f"frames/{v.id}/{ts}.jpg", b"fakejpeg")
+        f = Frame(video_id=v.id, ts_ms=ts, media_key=key, thumb_key=key,
                   width=100, height=100)
         s.add(f); frames.append(f)
     s.flush()
@@ -114,3 +115,35 @@ def test_raw_response_keeps_untouched_model_output(tmp_path, monkeypatch):
     assert ("тб_от", "отсутствие_каски") in pairs
     valid = next(f for f in raw_findings if f["category"] == "тб_от")
     assert [b["box_2d"] for b in valid["boxes"]] == [[-50, 900, 500, 1200], [500, 500, 505, 510]]
+
+
+class SecondsClient(FakeVlmClient):
+    """Answers ts_ms in seconds instead of milliseconds — the classic unit slip."""
+
+    def analyze_batch(self, images, ts_ms, low_quality, project_name) -> VlmResult:
+        return super().analyze_batch(images, [ts // 1000 for ts in ts_ms],
+                                     low_quality, project_name)
+
+
+class DriftingClient(FakeVlmClient):
+    """Answers plausible-but-inexact timestamps, as a model transcribing them will."""
+
+    def analyze_batch(self, images, ts_ms, low_quality, project_name) -> VlmResult:
+        return super().analyze_batch(images, [ts + 300 for ts in ts_ms],
+                                     low_quality, project_name)
+
+
+def test_implausible_timestamps_are_dropped_not_silently_mismatched(tmp_path, monkeypatch):
+    """A seconds-for-milliseconds answer lands far outside the batch's own span, so the
+    analyses are dropped rather than joined onto whatever frame happens to be nearest
+    (report.py's ref() has no distance bound of its own)."""
+    s, v, frames = setup(tmp_path, monkeypatch, 4, first_ts_ms=60000)
+    result = analyze_frames(s, v, frames, SecondsClient())
+    assert result == []
+    assert s.execute(select(Analysis)).scalars().one().status == "ok"  # batch itself was fine
+
+
+def test_drifting_timestamps_snap_to_the_batch_frames(tmp_path, monkeypatch):
+    s, v, frames = setup(tmp_path, monkeypatch, 4)
+    result = analyze_frames(s, v, frames, DriftingClient())
+    assert [r.ts_ms for r in result] == [f.ts_ms for f in frames]

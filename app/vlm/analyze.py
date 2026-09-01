@@ -4,13 +4,43 @@ from concurrent.futures import ThreadPoolExecutor
 from app import storage
 from app.config import settings
 from app.models import Analysis, Frame, Video
-from app.vlm.boxes import validate_boxes
 from app.vlm.client import VlmClient, VlmResult
 from app.vlm.schema import FrameAnalysis
 
 logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 4
+# A single-frame batch has zero span; without a floor every returned timestamp would
+# be dropped unless it matched to the millisecond.
+SNAP_TOLERANCE_FLOOR_MS = 1000
+
+
+def _snap_timestamps(frames: list[FrameAnalysis], batch_ts: list[int]) -> list[FrameAnalysis]:
+    """Snap each returned ts_ms onto one of the batch's own timestamps.
+
+    The model echoes ts_ms back as free-form data, and report.py joins evidence to
+    Frame rows by nearest timestamp with no distance bound. A model answering in
+    seconds, or repeating one timestamp for every image, would therefore collapse
+    findings onto the wrong frame and draw boxes over an image that never contained
+    the object. The batch's true timestamps are known right here, so snap to them and
+    drop anything further away than the batch's own span.
+    """
+    tolerance = max(max(batch_ts) - min(batch_ts), SNAP_TOLERANCE_FLOOR_MS)
+    kept: list[FrameAnalysis] = []
+    for frame in frames:
+        nearest = min(batch_ts, key=lambda ts: abs(ts - frame.ts_ms))
+        gap = abs(nearest - frame.ts_ms)
+        if gap > tolerance:
+            logger.warning(
+                "dropping frame analysis: model ts_ms=%s is %s ms from nearest batch "
+                "timestamp %s (tolerance %s ms)", frame.ts_ms, gap, nearest, tolerance)
+            continue
+        if gap:
+            logger.warning("snapping model ts_ms=%s to batch timestamp %s (gap %s ms)",
+                           frame.ts_ms, nearest, gap)
+            frame.ts_ms = nearest
+        kept.append(frame)
+    return kept
 
 
 def _run_batch(video: Video, batch: list[Frame], client: VlmClient) -> VlmResult:
@@ -49,10 +79,7 @@ def analyze_frames(session, video, frames, client, on_progress=None) -> list[Fra
             else:
                 raw_snapshot = result.parsed.model_dump()  # before clean() mutates in place
                 parsed = result.parsed.clean()
-                for frame_analysis in parsed.frames:
-                    for finding in frame_analysis.findings:
-                        finding.boxes = validate_boxes(finding.boxes)
-                    results.append(frame_analysis)
+                results.extend(_snap_timestamps(parsed.frames, [f.ts_ms for f in batch]))
                 session.add(Analysis(
                     video_id=video.id, batch_index=idx,
                     frame_ids=[f.id for f in batch],
