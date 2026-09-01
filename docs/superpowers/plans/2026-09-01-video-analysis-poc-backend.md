@@ -15,7 +15,7 @@
 - Report language: **Russian** (findings, comments, summary, labels).
 - Frame resize ceiling: **1568 px longest side**, JPEG **q85**; thumbs 320 px wide.
 - Sampling: baseline **5 s**; densify to **1.5 s** where motion > T_fast (default = 75th percentile of motion curve); PySceneDetect `ContentDetector` cuts add candidates.
-- Quality: blur = variance of Laplacian < 100 → replace with sharpest neighbor within **±0.7 s**, else keep best and `low_quality=true`; exposure reject mean luma **< 15 or > 240**; pHash 64-bit, drop if Hamming to previous kept **< 8**.
+- Quality: blur = variance of Laplacian < 100 → replace with sharpest neighbor within **±0.7 s**, else keep best and `low_quality=true`; exposure reject mean luma **< 15 or > 240**; pHash **63-bit** (fits a signed BIGINT column), drop if Hamming to previous kept **< 8**.
 - VLM batching: **4 sequential frames per request**, concurrent workers (4), retry once on schema failure then flag batch and continue.
 - Boxes: `box_2d = [y_min, x_min, y_max, x_max]` normalized **0–1000** against the stored (resized) frame. Validation (§4.3.1): clip to [0,1000]; drop degenerate (`y_max ≤ y_min` or `x_max ≤ x_min`), area < **0.02%** of frame (dy·dx < 200 in norm² space), IoU-dup > **0.9**.
 - Closed vocabulary (enforced via `Literal` types → platform-enforced enums):
@@ -180,7 +180,8 @@ Run: `uv run pytest tests/test_models.py -v` — Expected: FAIL (ModuleNotFoundE
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, Boolean, Float, ForeignKey, Integer, String, Text, DateTime
+from sqlalchemy import (JSON, BigInteger, Boolean, DateTime, Float, ForeignKey,
+                        Integer, String, Text)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -227,7 +228,7 @@ class Frame(Base):
     width: Mapped[int] = mapped_column(Integer)
     height: Mapped[int] = mapped_column(Integer)
     motion_score: Mapped[float] = mapped_column(Float, default=0.0)
-    phash: Mapped[int] = mapped_column(Integer, default=0)
+    phash: Mapped[int] = mapped_column(BigInteger, default=0)  # 63-bit, see quality.phash
     low_quality: Mapped[bool] = mapped_column(Boolean, default=False)
     # selected_reason ∈ {baseline, fast_motion, scene_cut, photo}
     selected_reason: Mapped[str] = mapped_column(String, default="baseline")
@@ -394,18 +395,35 @@ import numpy as np
 import pytest
 
 
+def _base_frame(size, seg):
+    """Deterministic structured frame: a sharp 40 px block grid, so Laplacian variance
+    stays well above the blur threshold and pHash is stable frame to frame. The palette
+    shifts per segment so PySceneDetect sees a real cut."""
+    img = np.zeros((size[1], size[0], 3), np.uint8)
+    for y in range(0, size[1], 40):
+        for x in range(0, size[0], 40):
+            shade = 40 + ((x // 40 + y // 40 + seg * 3) % 4) * 55
+            img[y:y + 40, x:x + 40] = (shade, (shade * 2) % 255, (shade + 90) % 255)
+    return img
+
+
 def make_video(path, seconds=12.0, fps=10, size=(320, 240), segments=1, moving=False):
-    """Synthetic mp4: `segments` hard color cuts; `moving` adds a moving rectangle."""
-    rng = np.random.default_rng(42)
+    """Synthetic mp4: `segments` hard palette cuts; `moving` adds a large block that
+    travels diagonally.
+
+    Frames inside a segment are identical unless `moving`, which makes pHash dedup
+    deterministic in tests. Real footage also has stable low-frequency structure —
+    per-frame random noise would not, and pHash on noise is meaningless.
+    """
     w = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"mp4v"), fps, size)
     n = int(seconds * fps)
     for i in range(n):
         seg = min(int(i / n * segments), segments - 1)
-        img = np.full((size[1], size[0], 3), ((seg * 90 + 40) % 255, 120, 200), np.uint8)
-        img = cv2.add(img, rng.integers(0, 30, img.shape, dtype=np.uint8))  # texture
+        img = _base_frame(size, seg)
         if moving:
-            x = (i * 9) % (size[0] - 40)
-            cv2.rectangle(img, (x, 80), (x + 40, 120), (255, 255, 255), -1)
+            x = (i * 9) % (size[0] - 120)
+            y = (i * 7) % (size[1] - 90)
+            cv2.rectangle(img, (x, y), (x + 120, y + 90), (255, 255, 255), -1)
         w.write(img)
     w.release()
     return str(path)
@@ -683,7 +701,7 @@ Run: `uv run pytest tests/test_schedule.py -v` — Expected: PASS. Commit point.
 - Test: `tests/test_quality.py`
 
 **Interfaces:**
-- Produces: `laplacian_var(gray) -> float`, `mean_luma(gray) -> float`, `frame_ok(gray) -> bool` (blur + exposure vs settings), `phash(gray) -> int` (64-bit), `hamming(a: int, b: int) -> int`. All take `np.ndarray` grayscale.
+- Produces: `laplacian_var(gray) -> float`, `mean_luma(gray) -> float`, `frame_ok(gray) -> bool` (blur + exposure vs settings), `phash(gray) -> int` (63-bit, fits BIGINT), `hamming(a: int, b: int) -> int`. All take `np.ndarray` grayscale.
 
 - [ ] **Step 1: Write the failing test** — `tests/test_quality.py`
 
@@ -754,12 +772,13 @@ def frame_ok(gray: np.ndarray) -> bool:
 
 
 def phash(gray: np.ndarray) -> int:
-    # 64-bit pHash: 32x32 DCT, top-left 8x8, threshold on median (DC term excluded)
+    # 63-bit pHash: 32x32 DCT, top-left 8x8, threshold on median (DC term excluded).
+    # 63 and not 64 bits so the value always fits a signed BIGINT column.
     small = cv2.resize(gray, (32, 32)).astype(np.float32)
     coeffs = cv2.dct(small)[:8, :8].flatten()
     median = np.median(coeffs[1:])
     bits = 0
-    for i, v in enumerate(coeffs):
+    for i, v in enumerate(coeffs[:63]):
         if v > median:
             bits |= 1 << i
     return bits
@@ -1003,7 +1022,6 @@ def test_spec_sample_parses():
 
 
 def test_clean_drops_mismatched_category_subtype():
-    bad = SPEC_SAMPLE.copy()
     bad = BatchResponse.model_validate({
         "frames": [{**SPEC_SAMPLE["frames"][0],
                     "findings": [{**SPEC_SAMPLE["frames"][0]["findings"][0],
@@ -1276,7 +1294,7 @@ def test_fake_client_shapes():
     assert r.parsed.frames[0].findings and not r.parsed.frames[1].findings
     f = r.parsed.frames[0].findings[0]
     assert f.category == "тб_от" and f.boxes[0].box_2d == [400, 400, 600, 600]
-    assert c.summarize("prompt") .startswith("На объекте")
+    assert c.summarize("prompt").startswith("На объекте")
 
 
 def test_draw_boxes_changes_pixels():
@@ -1730,7 +1748,7 @@ def _finalize(category, subtype, group) -> MergedFinding:
             else f"Зафиксировано на кадрах {mmss(group[0][0])}–{mmss(group[-1][0])}")
     return MergedFinding(
         category=category, subtype=subtype,
-        severity=max(g[1].severity for g in group, key=lambda s: SEVERITY_RANK[s]),
+        severity=max((g[1].severity for g in group), key=lambda s: SEVERITY_RANK[s]),
         title=best[1].comment.split(".")[0][:120],
         comment=f"{span}. {best[1].comment}",
         confidence=best[1].confidence,
@@ -1769,13 +1787,16 @@ def equipment_inventory(analyses: list[FrameAnalysis]) -> list[dict]:
 
 
 def activity_timeline(analyses: list[FrameAnalysis]) -> list[dict]:
+    """Contiguous segments: each ends where the next begins (spec §4.5 shape)."""
     ordered = sorted(analyses, key=lambda a: a.ts_ms)
     segments: list[dict] = []
     for a in ordered:
         if segments and segments[-1]["activity"] == a.activity:
             segments[-1]["to_ms"] = a.ts_ms
-        else:
-            segments.append({"from_ms": a.ts_ms, "to_ms": a.ts_ms, "activity": a.activity})
+            continue
+        if segments:
+            segments[-1]["to_ms"] = a.ts_ms
+        segments.append({"from_ms": a.ts_ms, "to_ms": a.ts_ms, "activity": a.activity})
     return segments
 
 
@@ -2129,7 +2150,7 @@ Run: `uv run pytest -q` — Expected: all green. Commit point.
 **Interfaces:**
 - Consumes: `run_pipeline`, ORM models, `storage`.
 - Produces (`app/main.py`): `app = FastAPI(...)` with `init_db()` on startup. Endpoints (§5.2, POC shape):
-  - `POST /api/videos/upload` — multipart `file` + optional form `project_name` → `{video_id}` (streams to `videos/{id}/{filename}`)
+  - `POST /api/videos/upload` — multipart `file` + optional form `project_name` → `{video_id}` (streams to `videos/{id}/{filename}`; the client-supplied filename is untrusted — reduce it to its basename via `_safe_name` before it reaches a storage key)
   - `POST /api/photos/upload` — multipart `file` → `{video_id}` with `is_photo=True`
   - `POST /api/videos/{id}/analyze` — 202 `{video_id, status}`; `BackgroundTasks.add_task(run_pipeline, id)`; 409 if already running
   - `GET /api/videos/{id}/status` — SSE `text/event-stream`, 1 Hz JSON `{status, progress_pct, progress_note, error}`, closes on done/failed
@@ -2200,6 +2221,15 @@ def test_report_before_done_returns_202(client, tmp_path):
     assert client.get("/api/videos/vid_missing/report").status_code == 404
 
 
+def test_upload_sanitizes_filename(client):
+    import io
+    r = client.post("/api/videos/upload",
+                    files={"file": ("../../evil.mp4", io.BytesIO(b"x"), "video/mp4")})
+    vid = r.json()["video_id"]
+    listed = next(v for v in client.get("/api/videos").json() if v["id"] == vid)
+    assert listed["filename"] == "evil.mp4"
+
+
 def test_sse_status_stream_ends_on_done(client, tmp_path):
     path = make_video(tmp_path / "c3.mp4", seconds=6)
     with open(path, "rb") as f:
@@ -2222,6 +2252,7 @@ Run: `uv run pytest tests/test_api.py -v` — Expected: FAIL
 import asyncio
 import json
 import logging
+from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse, Response, StreamingResponse
@@ -2246,10 +2277,15 @@ def _get_video(session, video_id: str) -> Video:
     return video
 
 
+def _safe_name(name: str | None) -> str:
+    """Upload filenames are untrusted and land in storage keys: basename only."""
+    return Path(name or "").name or "upload.bin"
+
+
 @router.post("/videos/upload")
 async def upload_video(file: UploadFile = File(...), project_name: str = Form("")):
     with SessionLocal() as session:
-        video = Video(filename=file.filename or "video.mp4", project_name=project_name,
+        video = Video(filename=_safe_name(file.filename), project_name=project_name,
                       media_key="")
         session.add(video)
         session.flush()
@@ -2262,7 +2298,7 @@ async def upload_video(file: UploadFile = File(...), project_name: str = Form(""
 @router.post("/photos/upload")
 async def upload_photo(file: UploadFile = File(...), project_name: str = Form("")):
     with SessionLocal() as session:
-        video = Video(filename=file.filename or "photo.jpg", project_name=project_name,
+        video = Video(filename=_safe_name(file.filename), project_name=project_name,
                       media_key="", is_photo=True)
         session.add(video)
         session.flush()
