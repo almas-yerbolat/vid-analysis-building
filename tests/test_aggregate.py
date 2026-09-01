@@ -1,6 +1,16 @@
-from app.aggregate import (activity_timeline, decide_stage, equipment_inventory,
-                           merge_findings)
+from app.aggregate import (activity_timeline, build_summary, decide_stage,
+                           equipment_inventory, merge_findings)
+from app.vlm.client import FakeVlmClient
 from app.vlm.schema import BatchResponse
+
+
+class SummaryClient:
+    def __init__(self):
+        self.prompts = []
+
+    def summarize(self, prompt):
+        self.prompts.append(prompt)
+        return "summary"
 
 def fa(ts_ms, stage="каркас", conf=0.9, activity="Монтаж", equipment=None, findings=None):
     return BatchResponse.model_validate({"frames": [{
@@ -9,8 +19,8 @@ def fa(ts_ms, stage="каркас", conf=0.9, activity="Монтаж", equipment
     }]}).frames[0]
 
 
-def helmet(conf=0.8, comment="без каски"):
-    return {"category": "тб_от", "subtype": "отсутствие_каски", "severity": "high",
+def helmet(conf=0.8, comment="без каски", severity="high"):
+    return {"category": "тб_от", "subtype": "отсутствие_каски", "severity": severity,
             "comment": comment, "confidence": conf,
             "boxes": [{"label": "рабочий", "box_2d": [100, 100, 300, 300]}]}
 
@@ -52,3 +62,48 @@ def test_timeline_merges_identical_activity():
     tl = activity_timeline(analyses)
     assert tl == [{"from_ms": 0, "to_ms": 10000, "activity": "Монтаж"},
                   {"from_ms": 10000, "to_ms": 10000, "activity": "Разгрузка"}]
+
+
+def test_stage_secondary_reported_when_above_threshold():
+    # каркас weight = 0.9 + 0.85 = 1.75 (winner); фасад weight = 0.6 (runner-up).
+    # threshold = 0.25 * 1.75 = 0.4375; 0.6 clears it with margin (ratio 0.343, not borderline).
+    analyses = [fa(0, "каркас", 0.9), fa(5000, "каркас", 0.85), fa(10000, "фасад", 0.6)]
+    stage = decide_stage(analyses)
+    assert stage["primary"] == "каркас"
+    assert stage["secondary"] == ["фасад"]
+
+
+def test_merge_takes_max_severity_and_confidence():
+    # same category/subtype, all within the 60s merge window (gaps 30s, 15s).
+    analyses = [fa(0, findings=[helmet(conf=0.6, severity="medium")]),
+                fa(30000, findings=[helmet(conf=0.9, severity="critical")]),
+                fa(45000, findings=[helmet(conf=0.7, severity="low")])]
+    merged = merge_findings(analyses)
+    assert len(merged) == 1
+    assert merged[0].severity == "critical"  # highest by SEVERITY_RANK, not first/last seen
+    assert merged[0].confidence == 0.9  # highest confidence in the group
+
+
+def test_build_summary_includes_aggregate_data():
+    client = SummaryClient()
+    stage = decide_stage([fa(0)])
+    equipment = equipment_inventory([fa(0, equipment=[{"type": "самосвал", "count": 1}])])
+    timeline = activity_timeline([fa(0)])
+    findings = merge_findings([fa(0, findings=[helmet()])])
+    summary = build_summary(client, stage, equipment, timeline, findings)
+    assert summary == "summary"
+    prompt = client.prompts[0]
+    assert "каркас" in prompt
+    assert "самосвал: 1" in prompt
+    assert "0–0с: Монтаж" in prompt
+    assert "[high] без каски" in prompt
+
+
+def test_build_summary_uses_empty_site_fallbacks():
+    stage = decide_stage([])
+    client = SummaryClient()
+    assert build_summary(client, stage, [], [], []) == "summary"
+    prompt = client.prompts[0]
+    assert "не выявлена" in prompt
+    assert "нет данных" in prompt
+    assert "не выявлены" in prompt

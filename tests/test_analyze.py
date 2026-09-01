@@ -4,7 +4,8 @@ from sqlalchemy.orm import Session
 from app import storage
 from app.models import Analysis, Base, Frame, Video
 from app.vlm.analyze import analyze_frames
-from app.vlm.client import FakeVlmClient
+from app.vlm.client import FakeVlmClient, VlmResult
+from app.vlm.schema import BatchResponse
 
 
 class FlakyClient(FakeVlmClient):
@@ -64,3 +65,52 @@ def test_double_failure_flags_batch(tmp_path, monkeypatch):
     assert result == []
     row = s.execute(select(Analysis)).scalars().one()
     assert row.status == "failed"
+
+
+class DirtyClient(FakeVlmClient):
+    """Returns output the sanitizers (BatchResponse.clean / validate_boxes) will alter,
+    so raw_response snapshotting can be tested against real mutation."""
+
+    def analyze_batch(self, images, ts_ms, low_quality, project_name) -> VlmResult:
+        parsed = BatchResponse.model_validate({"frames": [{
+            "ts_ms": ts_ms[0], "stage": "каркас", "stage_confidence": 0.9,
+            "activity": "Монтаж опалубки", "equipment": [],
+            "findings": [
+                {  # category/subtype mismatch: dropped whole by clean()
+                    "category": "экология_клининг", "subtype": "отсутствие_каски",
+                    "severity": "high", "comment": "мусор на площадке", "confidence": 0.7,
+                    "boxes": [],
+                },
+                {  # valid finding; boxes altered/dropped by validate_boxes
+                    "category": "тб_от", "subtype": "отсутствие_каски", "severity": "high",
+                    "comment": "Рабочий без каски.", "confidence": 0.8,
+                    "boxes": [
+                        {"label": "рабочий", "box_2d": [-50, 900, 500, 1200]},  # clipped
+                        {"label": "мелкий объект", "box_2d": [500, 500, 505, 510]},  # too small
+                    ],
+                },
+            ],
+        }]})
+        return VlmResult(parsed=parsed, raw_text=parsed.model_dump_json(), model="dirty")
+
+
+def test_raw_response_keeps_untouched_model_output(tmp_path, monkeypatch):
+    s, v, frames = setup(tmp_path, monkeypatch, 1)
+    result = analyze_frames(s, v, frames, DirtyClient())
+
+    # returned FrameAnalysis carries only the sanitized survivors.
+    assert len(result) == 1
+    survivors = result[0].findings
+    assert len(survivors) == 1
+    assert (survivors[0].category, survivors[0].subtype) == ("тб_от", "отсутствие_каски")
+    assert [b.box_2d for b in survivors[0].boxes] == [[0, 900, 500, 1000]]
+
+    # raw_response must still hold both findings and the original, unclipped boxes.
+    row = s.execute(select(Analysis)).scalars().one()
+    raw_findings = row.raw_response["frames"][0]["findings"]
+    assert len(raw_findings) == 2
+    pairs = {(f["category"], f["subtype"]) for f in raw_findings}
+    assert ("экология_клининг", "отсутствие_каски") in pairs
+    assert ("тб_от", "отсутствие_каски") in pairs
+    valid = next(f for f in raw_findings if f["category"] == "тб_от")
+    assert [b["box_2d"] for b in valid["boxes"]] == [[-50, 900, 500, 1200], [500, 500, 505, 510]]

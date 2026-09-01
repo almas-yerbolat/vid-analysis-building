@@ -18,6 +18,8 @@ def _run_batch(video: Video, batch: list[Frame], client: VlmClient) -> VlmResult
     ts = [f.ts_ms for f in batch]
     lq = [f.low_quality for f in batch]
     try:
+        # ponytail: bare except retries programming errors (e.g. AttributeError) as if
+        # they were flaky API calls; narrow to the SDK's transient-error types if that bites.
         return client.analyze_batch(images, ts, lq, video.project_name)
     except Exception:
         logger.warning("batch failed, retrying once", exc_info=True)
@@ -45,6 +47,7 @@ def analyze_frames(session, video, frames, client, on_progress=None) -> list[Fra
                                      raw_response={"error": str(exc)}, status="failed"))
                 done += 1
             else:
+                raw_snapshot = result.parsed.model_dump()  # before clean() mutates in place
                 parsed = result.parsed.clean()
                 for frame_analysis in parsed.frames:
                     for finding in frame_analysis.findings:
@@ -53,7 +56,7 @@ def analyze_frames(session, video, frames, client, on_progress=None) -> list[Fra
                 session.add(Analysis(
                     video_id=video.id, batch_index=idx,
                     frame_ids=[f.id for f in batch],
-                    raw_response=parsed.model_dump(), model=result.model,
+                    raw_response=raw_snapshot, model=result.model,
                     tokens_in=result.tokens_in, tokens_out=result.tokens_out, status="ok",
                 ))
                 done += 1
