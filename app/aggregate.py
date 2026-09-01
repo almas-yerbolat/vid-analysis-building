@@ -61,9 +61,11 @@ def _finalize(category, subtype, group) -> MergedFinding:
 
 def decide_stage(analyses: list[FrameAnalysis]) -> dict:
     weights = defaultdict(float)
+    counts = defaultdict(int)
     evidence = defaultdict(list)
     for a in analyses:
         weights[a.stage] += a.stage_confidence
+        counts[a.stage] += 1
         evidence[a.stage].append(a.ts_ms)
     if not weights:
         return {"primary": None, "secondary": [], "confidence": 0.0, "evidence_ts": []}
@@ -71,10 +73,16 @@ def decide_stage(analyses: list[FrameAnalysis]) -> dict:
     total = sum(weights.values())
     secondary = [s for s, w in weights.items()
                  if s != primary and w >= 0.25 * weights[primary]]
+    # Vote share alone is exactly 1.0 whenever every frame agrees on the stage — the
+    # normal single-site case — however unsure the model itself was. Scale it by the
+    # winner's mean stage_confidence so the published number carries both agreement
+    # and model certainty (spec §4.4.2 asks for a confidence-weighted vote).
+    vote_share = weights[primary] / total
+    mean_confidence = weights[primary] / counts[primary]
     return {
         "primary": primary,
         "secondary": sorted(secondary, key=lambda s: -weights[s]),
-        "confidence": round(weights[primary] / total, 2),
+        "confidence": round(vote_share * mean_confidence, 2),
         "evidence_ts": evidence[primary][:2],
     }
 

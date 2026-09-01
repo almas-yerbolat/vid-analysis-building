@@ -47,6 +47,23 @@ def test_stage_weighted_vote():
     stage = decide_stage(analyses)
     assert stage["primary"] == "каркас"
     assert stage["secondary"] == []  # 0.4 / 1.7 < 25%
+    # vote share 1.7 / 2.1 = 0.809523…; winner mean confidence 1.7 / 2 = 0.85;
+    # 0.809523… × 0.85 = 0.688095… → 0.69.
+    assert stage["confidence"] == 0.69
+
+
+def test_stage_confidence_is_not_one_when_model_was_unsure():
+    """Unanimous frames used to publish exactly 1.0 because vote share was the whole
+    story. Mediocre model confidence must surface as mediocre report confidence."""
+    stage = decide_stage([fa(0, "фасад", 0.5), fa(5000, "фасад", 0.5)])
+    assert stage["primary"] == "фасад"
+    assert stage["confidence"] != 1.0
+    assert stage["confidence"] == 0.5  # vote share 1.0 × mean confidence 0.5
+
+
+def test_stage_confidence_high_when_model_was_sure():
+    stage = decide_stage([fa(0, "фасад", 0.95), fa(5000, "фасад", 0.95)])
+    assert stage["confidence"] == 0.95
 
 
 def test_equipment_max_simultaneous():
