@@ -1,6 +1,6 @@
 import type { PendingReport, Report, Video, VideoStatus } from '@/lib/types'
 
-const base = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000'
+const base = process.env.NEXT_PUBLIC_API_BASE_URL ?? ''
 
 export const api = {
   url: (path: string) => `${base}${path}`,

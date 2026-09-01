@@ -41,7 +41,7 @@ export interface Finding {
   title: string
   comment: string
   confidence: number
-  status: string
+  status: 'unreviewed'
   evidence: Evidence[]
 }
 
@@ -62,7 +62,7 @@ export interface Report {
   }
   summary_ru: string
   equipment: Array<{ type: string; max_count: number; evidence_frame: string | null }>
-  activity_timeline: Array<Record<string, unknown>>
+  activity_timeline: Array<{ from_ms: number; to_ms: number; activity: string }>
   findings: Finding[]
   stats: Record<Finding['severity'], number>
 }
